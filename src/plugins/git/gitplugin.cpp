@@ -48,6 +48,7 @@
 #include <utils/commandline.h>
 #include <utils/infobar.h>
 #include <utils/pathchooser.h>
+#include <utils/process.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
 #include <utils/utilsicons.h>
@@ -132,6 +133,35 @@ public:
 };
 
 static const QVersionNumber minimumRequiredVersion{1, 9};
+
+class GitMacroExpander : public MacroExpander
+{
+public:
+    GitMacroExpander()
+    {
+        setDisplayName(Tr::tr("Git config variables"));
+        registerPrefix("Git:Config", Tr::tr("Access git config variables."),
+                       [](const QString &value)
+        {
+            Utils::Process gitProc;
+            gitProc.setCommand({"git", {"config", value}});
+            gitProc.runBlocking();
+            if (gitProc.result() != ProcessResult::FinishedWithSuccess)
+                return QString();
+            return gitProc.allOutput();
+        }, true);
+    }
+};
+
+/*!
+ * Returns the expander for registered variables.
+ */
+MacroExpander *gitMacroExpander()
+{
+    static GitMacroExpander theGitExpander;
+    return &theGitExpander;
+}
+
 
 // GitPlugin
 
@@ -540,6 +570,8 @@ GitPluginPrivate::GitPluginPrivate()
     : VersionControlBase(Context(Constants::GIT_CONTEXT))
 {
     dd = this;
+
+    gitMacroExpander();
 
     setTopicFileTracker([](const FilePath &repository) {
         const FilePath gitDir = gitClient().findGitDirForRepository(repository);
