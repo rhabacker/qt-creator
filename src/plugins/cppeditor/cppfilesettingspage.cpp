@@ -198,6 +198,7 @@ static bool keyWordReplacement(const QString &keyWord,
                                                     : QLatin1String("%{Env:USER}");
         return true;
     }
+
     // Environment variables (for example '%$EMAIL%').
     if (keyWord.startsWith(QLatin1String("%$"))) {
         const QString varName = keyWord.mid(2, keyWord.size() - 3);
@@ -217,6 +218,10 @@ static void parseLicenseTemplatePlaceholders(QString *t)
         const int placeHolderPos = t->indexOf(placeHolder, pos);
         if (placeHolderPos == -1)
             break;
+        if (t->at(placeHolderPos + 1) == QLatin1Char('{')) {
+            pos = placeHolderPos + 1;
+            continue;
+        }
         const int endPlaceHolderPos = t->indexOf(placeHolder, placeHolderPos + 1);
         if (endPlaceHolderPos == -1)
             break;
