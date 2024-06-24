@@ -865,7 +865,7 @@ FilePath FilePath::withSuffix(const QString &suffix) const
 
 static bool startsWithWindowsDriveLetterAndSlash(QStringView path)
 {
-    return path.size() > 2 && path[1] == ':' && path[2] == '/' && isWindowsDriveLetter(path[0]);
+    return path.size() > 2 && path[1] == ':' && (path[2] == '/' || path[2] == '\\') && isWindowsDriveLetter(path[0]);
 }
 
 static bool startsWithWindowsDriveLetter(QStringView path)
@@ -2228,6 +2228,12 @@ FilePath FilePath::canonicalPath() const
             return fromUserInput(QString::fromStdWString(std::wstring(normalizedPath, length)));
     }
 #endif
+    // debugging cross compiled app
+    if (startsWithWindowsDriveLetterAndSlash(pathView()) && pathView().at(0).toLower() == 'z') {
+        const QString result = QFileInfo(pathView().toString().mid(2)).canonicalFilePath();
+        if (!result.isEmpty())
+            return fromString(result);
+    }
 
     const QString result = toFileInfo().canonicalFilePath();
     if (!result.isEmpty())
