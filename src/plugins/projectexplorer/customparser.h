@@ -67,6 +67,7 @@ public:
 
     Utils::Id id;
     QString displayName;
+    bool projectLevel{false};
     CustomParserExpression error;
     CustomParserExpression warning;
 };

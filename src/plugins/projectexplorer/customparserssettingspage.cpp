@@ -15,9 +15,10 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QList>
-#include <QListWidget>
 #include <QPushButton>
+#include <QTableWidget>
 #include <QVBoxLayout>
+#include <qheaderview.h>
 
 namespace ProjectExplorer {
 namespace Internal {
@@ -60,13 +61,13 @@ public:
             resetListView();
         });
         connect(removeButton, &QPushButton::clicked, this, [this] {
-            const QList<QListWidgetItem *> sel = m_parserListView.selectedItems();
+            const QList<QTableWidgetItem *> sel = m_parserListView.selectedItems();
             QTC_ASSERT(sel.size() == 1, return);
             m_customParsers.removeAt(m_parserListView.row(sel.first()));
             delete sel.first();
         });
         connect(editButton, &QPushButton::clicked, this, [this] {
-            const QList<QListWidgetItem *> sel = m_parserListView.selectedItems();
+            const QList<QTableWidgetItem *> sel = m_parserListView.selectedItems();
             QTC_ASSERT(sel.size() == 1, return);
             CustomParserSettings &s = m_customParsers[m_parserListView.row(sel.first())];
             CustomParserConfigDialog dlg(this);
@@ -77,9 +78,24 @@ public:
             s.warning = dlg.settings().warning;
         });
 
-        connect(&m_parserListView, &QListWidget::itemChanged, this, [this](QListWidgetItem *item) {
-            m_customParsers[m_parserListView.row(item)].displayName = item->text();
-            resetListView();
+        connect(&m_parserListView, &QTableWidget::cellClicked, this, [this](int row, int column) {
+            if (column == 0)
+                return;
+            QTableWidgetItem *item = m_parserListView.item(row, column);
+            if (item->checkState() == Qt::Checked) {
+                item->setCheckState(Qt::Unchecked);
+                m_customParsers[row].projectLevel = false;
+            } else {
+                item->setCheckState(Qt::Checked);
+                m_customParsers[row].projectLevel = true;
+            }
+        });
+
+        connect(&m_parserListView, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
+            if (item->column() == 0)
+                m_customParsers[m_parserListView.row(item)].displayName = item->text();
+            else if (item->column() == 1)
+                m_customParsers[m_parserListView.row(item)].projectLevel = item->checkState() == Qt::Checked;
         });
 
         const auto updateButtons = [this, removeButton, editButton] {
@@ -97,19 +113,29 @@ private:
 
     void resetListView()
     {
-        m_parserListView.clear();
+        m_parserListView.clearContents();
+        m_parserListView.setColumnCount(2);
+        m_parserListView.setRowCount(m_customParsers.size());
+        m_parserListView.setHorizontalHeaderLabels(QStringList() << Tr::tr("Name") << Tr::tr("Project level"));
+        m_parserListView.verticalHeader()->hide();
+
         Utils::sort(m_customParsers,
                     [](const CustomParserSettings &s1, const CustomParserSettings &s2) {
             return s1.displayName < s2.displayName;
         });
+        int row = 0;
         for (const CustomParserSettings &s : std::as_const(m_customParsers)) {
-            const auto item = new QListWidgetItem(s.displayName);
-            item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable);
-            m_parserListView.addItem(item);
+            const auto nameItem = new QTableWidgetItem(s.displayName);
+            nameItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable);
+            m_parserListView.setItem(row, 0, nameItem);
+            const auto projectLevelItem = new QTableWidgetItem();
+            projectLevelItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsEditable);
+            projectLevelItem->setCheckState(s.projectLevel ? Qt::Checked : Qt::Unchecked);
+            m_parserListView.setItem(row++, 1, projectLevelItem);
         }
     }
 
-    QListWidget m_parserListView;
+    QTableWidget m_parserListView;
     QList<CustomParserSettings> m_customParsers;
 };
 

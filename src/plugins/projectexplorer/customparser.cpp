@@ -38,6 +38,7 @@ const char fileNameCapKey[] = "FileNameCap";
 const char messageCapKey[] = "MessageCap";
 const char channelKey[] = "Channel";
 const char exampleKey[] = "Example";
+const char projectLevelKey[] = "ProjectLevel";
 
 namespace ProjectExplorer {
 
@@ -136,7 +137,8 @@ void CustomParserExpression::setFileNameCap(int fileNameCap)
 bool CustomParserSettings::operator ==(const CustomParserSettings &other) const
 {
     return id == other.id && displayName == other.displayName
-            && error == other.error && warning == other.warning;
+            && error == other.error && warning == other.warning
+            && projectLevel == other.projectLevel;
 }
 
 Store CustomParserSettings::toMap() const
@@ -146,6 +148,7 @@ Store CustomParserSettings::toMap() const
     map.insert(nameKey, displayName);
     map.insert(errorKey, variantFromStore(error.toMap()));
     map.insert(warningKey, variantFromStore(warning.toMap()));
+    map.insert(projectLevelKey, projectLevel);
     return map;
 }
 
@@ -155,6 +158,7 @@ void CustomParserSettings::fromMap(const Store &map)
     displayName = map.value(nameKey).toString();
     error.fromMap(storeFromVariant(map.value(errorKey)));
     warning.fromMap(storeFromVariant(map.value(warningKey)));
+    projectLevel = map.value(projectLevelKey).toBool();
 }
 
 CustomParsersAspect::CustomParsersAspect(Target *target)
@@ -302,12 +306,17 @@ private:
     {
         const auto layout = qobject_cast<QVBoxLayout *>(this->layout());
         QTC_ASSERT(layout, return);
-        const QList<Utils::Id> parsers = selectedParsers();
+        QList<Utils::Id> parsers = selectedParsers();
         for (const auto &p : std::as_const(parserCheckBoxes))
             delete p.first;
         parserCheckBoxes.clear();
         for (const CustomParserSettings &s : ProjectExplorerPlugin::customParsers()) {
             const auto checkBox = new QCheckBox(s.displayName, this);
+            checkBox->setCheckState(s.projectLevel ? Qt::Checked : Qt::Unchecked);
+            if (s.projectLevel && !parsers.contains(s.id)) {
+                parsers.append(s.id);
+            }
+            checkBox->setEnabled(!s.projectLevel);
             connect(checkBox, &QCheckBox::stateChanged, this, &SelectionWidget::selectionChanged);
             parserCheckBoxes.push_back({checkBox, s.id});
             layout->addWidget(checkBox);
