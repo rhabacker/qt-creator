@@ -48,9 +48,10 @@
 #include <utils/commandline.h>
 #include <utils/fileutils.h>
 #include <utils/infobar.h>
+#include <utils/macroexpander.h>
 #include <utils/pathchooser.h>
-#include <utils/process.h>
 #include <utils/qtcassert.h>
+#include "utils/qtcprocess.h"
 #include <utils/stringutils.h>
 #include <utils/utilsicons.h>
 
