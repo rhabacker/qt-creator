@@ -129,17 +129,17 @@ class UnnamedSubItem(SubItem):
 
 class DumperBase():
     @staticmethod
-    def warn(message):
-        print('bridgemessage={msg="%s"}' % message.replace('"', "'").replace('\\', '\\\\'))
+    def warn(prefix, message):
+        print('bridgemessage={%s: msg="%s"},' % (prefix, message.replace('"', '$').encode('latin1')))
 
     #@staticmethod
     def showException(self, msg, exType, exValue, exTraceback):
-        self.warn('**** CAUGHT EXCEPTION: %s ****' % msg)
+        self.warn(HERE(), '**** CAUGHT EXCEPTION: %s ****' % msg)
         try:
             import traceback
             for frame_desc in traceback.format_exception(exType, exValue, exTraceback):
                 for line in frame_desc.split('\n'):
-                    self.warn(line)
+                    self.warn(HERE(), line)
         except:
             pass
 
@@ -149,9 +149,9 @@ class DumperBase():
         io = StringIO()
         traceback.print_stack(file=io)
         data = io.getvalue()
-        self.warn('LOCATION:')
+        self.warn(HERE(), 'LOCATION:')
         for line in data.split('\n')[:-3]:
-            self.warn(line)
+            self.warn(HERE(), line)
 
     def __init__(self):
         self.isCdb = False
@@ -306,7 +306,7 @@ class DumperBase():
             self.qtversionAtLeast6 = is6
             self.register_known_qt_types()
         #else:
-        #   self.warn("QT VERSION ALREADY KNOWN")
+        #   self.warn(HERE(), "QT VERSION ALREADY KNOWN")
 
     def qtNamespace(self):
         return '' if self.qtnamespace is None else self.qtnamespace
@@ -497,8 +497,8 @@ class DumperBase():
             if native_type is None:
                 #sCANNOT DETERMINE SIZE FOR TYelf.dump_location()
                 #self.dump_location()
-                self.warn("TYPEIDS: %s" % self.typeid_cache)
-                self.warn("COULD NOT FIND TYPE '%s'" % typename)
+                self.warn(HERE(), "TYPEIDS: %s" % self.typeid_cache)
+                self.warn(HERE(), "COULD NOT FIND TYPE '%s'" % typename)
                 return None
 
         self.type_nativetype_cache[typeid] = native_type
@@ -544,7 +544,7 @@ class DumperBase():
         # p5 = n  -> n * ptrsize for Qt 5
         # p6 = n  -> n * ptrsize for Qt 6
         if self.qtversionAtLeast6 is None:
-            self.warn("TOO EARLY TO GUESS QT VERSION")
+            self.warn(HERE(), "TOO EARLY TO GUESS QT VERSION")
             size = 8 * p6 + s
         elif self.qtversionAtLeast6 is True:
             size = 8 * p6 + s
@@ -1072,7 +1072,7 @@ class DumperBase():
 
     def check(self, exp):
         if not exp:
-            self.warn('Check failed: %s' % exp)
+            self.warn(HERE(), 'Check failed: %s' % exp)
             #self.dump_location()
             raise RuntimeError('Check failed: %s' % exp)
 
@@ -1103,7 +1103,7 @@ class DumperBase():
                 break
             except:
                 maximum = int(maximum / 2)
-                self.warn('REDUCING READING MAXIMUM TO %s' % maximum)
+                self.warn(HERE(), 'REDUCING READING MAXIMUM TO %s' % maximum)
 
         #self.warn('BASE: 0x%x TSIZE: %s MAX: %s' % (base, typesize, maximum))
         for i in range(0, maximum, typesize):
@@ -1360,7 +1360,7 @@ class DumperBase():
         ns = self.qtNamespace()
         if len(ns) > 0 and typename.startswith(ns):
             typename = typename[len(ns):]
-        # self.warn( 'stripping %s' % typename )
+        # self.warn(HERE(),  'stripping %s' % typename )
         lvl = 0
         pos = None
         stripChunks = []
@@ -2873,7 +2873,7 @@ typename))
                     resdict = json.loads(payload)
                     continue
                 except:
-                    self.warn('Cannot parse native payload: %s' % payload)
+                    self.warn(HERE(), 'Cannot parse native payload: %s' % payload)
             else:
                 print('interpreteralien=%s'
                       % {'service': service, 'payload': self.hexencode(payload)})
@@ -2881,7 +2881,7 @@ typename))
             expr = 'qt_qmlDebugClearBuffer()'
             res = self.parseAndEvaluate(expr)
         except RuntimeError as error:
-            self.warn('Cleaning buffer failed: %s: %s' % (expr, error))
+            self.warn(HERE(), 'Cleaning buffer failed: %s: %s' % (expr, error))
 
         return resdict
 
@@ -2892,14 +2892,14 @@ typename))
         try:
             res = self.parseAndEvaluate(expr)
         except RuntimeError as error:
-            self.warn('Interpreter command failed: %s: %s' % (encoded, error))
+            self.warn(HERE(), 'Interpreter command failed: %s: %s' % (encoded, error))
             return {}
         except AttributeError as error:
             # Happens with LLDB and 'None' current thread.
-            self.warn('Interpreter command failed: %s: %s' % (encoded, error))
+            self.warn(HERE(), 'Interpreter command failed: %s: %s' % (encoded, error))
             return {}
         if not res:
-            self.warn('Interpreter command failed: %s ' % encoded)
+            self.warn(HERE(), 'Interpreter command failed: %s ' % encoded)
             return {}
         return self.fetchInterpreterResult()
 
@@ -3159,6 +3159,7 @@ typename))
             self.ldisplay = None
             self.summary = None      # Always hexencoded UTF-8.
             self.isBaseClass = None
+            self.nativeType = None
             self.nativeValue = None
             self.autoDerefCount = 0
 
@@ -3175,6 +3176,7 @@ typename))
             val.lIsInScope = self.lIsInScope
             val.ldisplay = self.ldisplay
             val.summary = self.summary
+            val.nativeType = self.nativeType
             val.nativeValue = self.nativeValue
             return val
 
@@ -3198,7 +3200,9 @@ typename))
 
         def stringify(self):
             addr = 'None' if self.laddress is None else ('0x%x' % self.laddress)
-            if isinstance(self.ldata, int):
+            if self.nativeValue:
+                data = self.nativeValue
+            elif isinstance(self.ldata, int):
                 data = str(self.ldata)
             else:
                 data = self.dumper.hexencode(self.ldata)
@@ -3209,7 +3213,9 @@ typename))
             return self.dumper.value_display_enum(self, form)
 
         def display(self):
-            if self.ldisplay is not None:
+            if self.nativeValue is not None:
+                return self.nativeValue
+            elif self.ldisplay is not None:
                 return self.ldisplay
             simple = self.value()
             if simple is not None:
@@ -3316,23 +3322,23 @@ typename))
         self.typeid_from_typekey = {}   # typename -> id
 
     def dump_type_cache(self):
-        self.warn('NAME: %s' % self.type_name_cache)
-        self.warn('CODE: %s' % self.type_code_cache)
+        self.warn(HERE(), 'NAME: %s' % self.type_name_cache)
+        self.warn(HERE(), 'CODE: %s' % self.type_code_cache)
         #self.warn('FIELDS: %s' % self.type_fields_cache)
-        self.warn('SIZE: %s' % self.type_size_cache)
-        self.warn('TARGS: %s' % self.type_template_arguments_cache)
-        self.warn('BITSIZE: %s' % self.type_bitsize_cache)
-        self.warn('TARGET: %s' % self.type_target_cache)
+        self.warn(HERE(), 'SIZE: %s' % self.type_size_cache)
+        self.warn(HERE(), 'TARGS: %s' % self.type_template_arguments_cache)
+        self.warn(HERE(), 'BITSIZE: %s' % self.type_bitsize_cache)
+        self.warn(HERE(), 'TARGET: %s' % self.type_target_cache)
         #self.warn('NATIVETYPE: %s' % self.type_nativetype_cache)
 
     def dump_typeid(self, typeid):
-        self.warn('  NAME: %s' % self.type_name_cache.get(typeid, None))
-        self.warn('  CODE: %s' % self.type_code_cache.get(typeid, None))
+        self.warn(HERE(), '  NAME: %s' % self.type_name_cache.get(typeid, None))
+        self.warn(HERE(), '  CODE: %s' % self.type_code_cache.get(typeid, None))
         #self.warn('  FIELDS: %s' % self.type_fields_cache.get(typeid, None))
-        self.warn('  SIZE: %s' % self.type_size_cache.get(typeid, None))
-        self.warn('  TARGS: %s' % self.type_template_arguments_cache.get(typeid, None))
-        self.warn('  BITSIZE: %s' % self.type_bitsize_cache.get(typeid, None))
-        self.warn('  TARGET: %s' % self.type_target_cache.get(typeid, None))
+        self.warn(HERE(), '  SIZE: %s' % self.type_size_cache.get(typeid, None))
+        self.warn(HERE(), '  TARGS: %s' % self.type_template_arguments_cache.get(typeid, None))
+        self.warn(HERE(), '  BITSIZE: %s' % self.type_bitsize_cache.get(typeid, None))
+        self.warn(HERE(), '  TARGET: %s' % self.type_target_cache.get(typeid, None))
         #self.warn('  NATIVETYPE: %s' % self.type_nativetype_cache.get(typeid, None))
 
     def typeid_for_typish(self, typish):
@@ -3342,7 +3348,7 @@ typename))
             return self.typeid_for_string(typish)
         if isinstance(typish, self.Type):
             return typish.typeid
-        self.warn('NO TYPE FOR TYPISH: %s' % str(typish))
+        self.warn(HERE(), 'NO TYPE FOR TYPISH: %s' % str(typish))
         return 0
 
     def sanitize_type_name(self, typeid_str):
@@ -3726,7 +3732,7 @@ typename))
             if size is not None:
                 return size, typeid
 
-        self.warn("UNKNOWN EMBEDDED TYPE: %s" % typename)
+        self.warn(HERE(), "UNKNOWN EMBEDDED TYPE: %s" % typename)
         return 0, 0
 
     @functools.lru_cache(maxsize = None)
@@ -3955,7 +3961,7 @@ typename))
             self.type_size_cache[typeid] = size
         else:
             self.dump_type_cache()
-            self.warn("CANNOT DETERMINE SIZE FOR TYPE %s" % str(typeid))
+            self.warn(HERE(), "CANNOT DETERMINE SIZE FOR TYPE %s" % str(typeid))
 
         return size
 
@@ -4006,7 +4012,7 @@ typename))
             members = self.nativeListMembers(value, native_type, include_bases)
             #self.warn("FIELDS 2: %s" % ', '.join(str(f) for f in members))
         else:
-            self.warn("NO NATIVE TYPE FIELDS FOR: %s" % typeid)
+            self.warn(HERE(), "NO NATIVE TYPE FIELDS FOR: %s" % typeid)
 
         #self.warn("GOT MEMBERS: %s" % ', '.join(str(f.name) for f in members))
         return members
@@ -4058,10 +4064,10 @@ typename))
                     bases.append(member)
             if self.isCdb:
                 for base in bases:
-                    # self.warn("CHECKING BASE CLASS '%s' for '%s'" % (base.type.name, name))
+                    # self.warn(HERE(), "CHECKING BASE CLASS '%s' for '%s'" % (base.type.name, name))
                     res = self.value_member_by_name(base, name)
                     if res is not None:
-                        # self.warn('FOUND MEMBER 2: %s IN %s' % (name, value.type.name))
+                        # self.warn(HERE(), 'FOUND MEMBER 2: %s IN %s' % (name, value.type.name))
                         return res
             else:
                 for member in members:

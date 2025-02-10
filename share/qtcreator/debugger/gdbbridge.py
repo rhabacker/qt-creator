@@ -17,6 +17,14 @@ from dumper import DumperBase, Children, TopLevelItem
 from utils import TypeCode
 from gdbtracepoint import *
 
+from inspect import currentframe, getframeinfo
+
+def HERE():
+    frameinfo = getframeinfo(currentframe().f_back)
+    filename = frameinfo.filename.split('/')[-1]
+    linenumber = frameinfo.lineno
+    loc_str = 'File: %s, line: %d' % (filename, linenumber)
+    return loc_str
 
 #######################################################################
 #
@@ -190,9 +198,6 @@ class Dumper(DumperBase):
         self.isGdb = True
         self.interpreterBreakpointResolvers = []
 
-    def warn(self, message):
-        print('bridgemessage={msg="%s"},' % message.replace('"', '$').encode('latin1'))
-
     def prepare(self, args):
         self.output = []
         self.setVariableFetchingOptions(args)
@@ -237,15 +242,21 @@ class Dumper(DumperBase):
 
         if nativeValue.address is not None:
             val.laddress = int(nativeValue.address)
-        elif code == gdb.TYPE_CODE_STRUCT:
+        if code == gdb.TYPE_CODE_STRUCT:
             try:
                 val.ldata = nativeValue.bytes # GDB 15 only
             except:
-                val.ldata = self.nativeDataFromValueFallback(nativeValue, nativeValue.type.sizeof)
+                try:
+                    val.ldata = self.nativeDataFromValueFallback(nativeValue, nativeValue.type.sizeof)
+                except:
+                    val.typeid = self.from_native_type(nativeType)
+                    val.nativeType = nativeType
+                    val.nativeValue = nativeValue
+                    return val
 
         val.typeid = self.from_native_type(nativeType)
         val.lIsInScope = not nativeValue.is_optimized_out
-        code = nativeType.code
+
         if code == gdb.TYPE_CODE_ENUM:
             val.ldisplay = str(nativeValue)
             intval = int(nativeValue)
@@ -287,7 +298,7 @@ class Dumper(DumperBase):
                     pass
             return bytes(buf)
         except:
-            self.warn('VALUE EXTRACTION FAILED: VALUE: %s SIZE: %s' % (nativeValue, size))
+            self.warn(HERE(), 'VALUE EXTRACTION FAILED: VALUE: %s SIZE: %s' % (nativeValue, size))
         return None
 
     def ptrSize(self):
@@ -344,7 +355,7 @@ class Dumper(DumperBase):
             typeid = self.create_typedefed_typeid(target_typeid, str(nativeType), typeid_str)
 
         elif code == gdb.TYPE_CODE_ERROR:
-            self.warn('Type error: %s' % nativeType)
+            self.warn(HERE(), 'Type error: %s' % nativeType)
             typeid = 0 # the invalid id
 
         else:
@@ -382,13 +393,14 @@ class Dumper(DumperBase):
 
         if code == gdb.TYPE_CODE_STRUCT:
             self.type_qobject_based_cache[typeid] = self.is_qobject_based(nativeType)
-            #res = self.is_qobject_based(nativeType)
-            #if res == False:
-            #    self.warn("RECOGNIZED AS NON-QOBJECT: %s" % nativeType)
-            #elif res == True:
-            #    self.warn("RECOGNIZED AS   QOBJECT: %s" % nativeType)
-            #else:
-            #    self.warn("UNRECOGNIZED: %s" % nativeType)
+            res = self.is_qobject_based(nativeType)
+            if res == False:
+                self.warn(HERE(), "RECOGNIZED AS NON-QOBJECT: %s" % nativeType)
+            elif res == True:
+                self.warn(HERE(), "RECOGNIZED AS   QOBJECT: %s" % nativeType)
+            else:
+                self.warn(HERE(), "UNRECOGNIZED: %s" % nativeType)
+                typeid = TypeCode.Struct
         elif code != gdb.TYPE_CODE_TYPEDEF:
             self.type_qobject_based_cache[typeid] = False
 
@@ -525,7 +537,7 @@ class Dumper(DumperBase):
                 try:
                     native_member = nativeValue[nativeField]
                 except:
-                    self.warn('  COULD NOT ACCESS FIELD: %s' % nativeFieldType)
+                    self.warn(HERE(), '  COULD NOT ACCESS FIELD: %s' % nativeFieldType)
                     continue
 
                 val = self.fromNativeValue(native_member)
@@ -598,14 +610,14 @@ class Dumper(DumperBase):
             #self.warn('BLOCK IN FRAME NOT ACCESSIBLE: %s' % error)
             return []
         except:
-            self.warn('BLOCK NOT ACCESSIBLE FOR UNKNOWN REASONS')
+            self.warn(HERE(), 'BLOCK NOT ACCESSIBLE FOR UNKNOWN REASONS')
             return []
 
         items = []
         shadowed = {}
         while True:
             if block is None:
-                self.warn("UNEXPECTED 'None' BLOCK")
+                self.warn(HERE(), "UNEXPECTED 'None' BLOCK")
                 break
             for symbol in block:
 
@@ -758,7 +770,7 @@ class Dumper(DumperBase):
             return val
         except RuntimeError as error:
             if self.passExceptions:
-                self.warn("Cannot evaluate '%s': %s" % (exp, error))
+                self.warn(HERE(), "Cannot evaluate '%s': %s" % (exp, error))
             return None
 
     def callHelper(self, rettype, value, function, args):
@@ -1041,7 +1053,7 @@ class Dumper(DumperBase):
                 for printer in printers.subprinters:
                     self.importPlainDumper(printer)
             else:
-                self.warn('Loading a printer without the subprinters attribute not supported.')
+                self.warn(HERE(), 'Loading a printer without the subprinters attribute not supported.')
 
     def importPlainDumpers(self):
         for obj in gdb.objfiles():
